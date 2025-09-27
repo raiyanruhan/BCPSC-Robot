@@ -2,7 +2,9 @@
   <img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
 </div>
 
-# This is a large H1 heading
+<div style="text-align: center;">
+# BCPSC Robot – System Design
+</div>
 
 ## Input & Sensing
 
