@@ -1,4 +1,6 @@
-![BCPSC logo](https://www.bcpsc.edu.bd/media/BCPSC.png)
+<div align="center">
+  <img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
+</div>
 # BCPSC Robot – System Design (Based on Notebook Notes)
 
 ## Input & Sensing
