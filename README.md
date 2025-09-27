@@ -1,4 +1,4 @@
-![Google logo](https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png "Google Search Engine Logo")
+![BCPSC logo]([https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScwot8M97ZQSF1Ce8N7wucRWi6ZXkdSXwwNA&s) "BCPSC Logo")
 # BCPSC Robot – System Design (Based on Notebook Notes)
 
 ## Input & Sensing
@@ -107,5 +107,3 @@ Runs **three main parallel sectors** on Raspberry Pi:
 * Flexible → always provide a response.
 * Layered fallback design → no “dead ends.”
 * Offline-first mindset → robot keeps working even without internet.
-
-👉 Do you want me to also draw a **system architecture diagram** (with arrows: ESP32 → Pi Camera → TM → AI Models → TTS → Output)? That might help you present it better to your team.
