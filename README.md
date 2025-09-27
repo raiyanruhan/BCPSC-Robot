@@ -2,9 +2,7 @@
   <img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
 </div>
 
-<div style="text-align: center;">
 # BCPSC Robot System Design
-</div>
 
 ## Input & Sensing
 
