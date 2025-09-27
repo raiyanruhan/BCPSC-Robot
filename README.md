@@ -3,7 +3,7 @@
 </div>
 
 <div style="text-align: center;">
-# BCPSC Robot – System Design
+# BCPSC Robot System Design
 </div>
 
 ## Input & Sensing
