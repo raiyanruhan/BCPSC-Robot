@@ -1,4 +1,4 @@
-![BCPSC logo]([https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcScwot8M97ZQSF1Ce8N7wucRWi6ZXkdSXwwNA&s) "BCPSC Logo")
+![BCPSC logo](https://www.bcpsc.edu.bd/media/BCPSC.png)
 # BCPSC Robot – System Design (Based on Notebook Notes)
 
 ## Input & Sensing
