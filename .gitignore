@@ -8,6 +8,7 @@
 *.pem
 config.json
 secrets.json
+api_keys_backup.txt
 
 # Audio output files
 *.mp3
