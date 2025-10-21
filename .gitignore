@@ -1,0 +1,77 @@
+# Environment variables
+.env
+.env.local
+.env.production
+
+# API Keys and sensitive files
+*.key
+*.pem
+config.json
+secrets.json
+
+# Audio output files
+*.mp3
+*.wav
+*.m4a
+*.aac
+
+# Log files
+*.log
+logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Model files (if large)
+*.onnx
+*.bin
+*.safetensors
+models/
+
+# Test outputs
+test_outputs/
+test_results/

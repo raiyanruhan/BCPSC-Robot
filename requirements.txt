@@ -1,0 +1,20 @@
+# Core dependencies
+requests>=2.31.0
+urllib3>=2.0.0
+
+# TTS Libraries
+elevenlabs>=0.2.0
+google-generativeai>=0.3.0
+gtts>=2.4.0
+banglatts>=1.0.0
+kittentts>=1.0.0
+
+# Audio processing
+soundfile>=0.12.0
+wave
+
+# Optional: Configuration
+PyYAML>=6.0
+
+# Optional: Language detection
+langdetect>=1.0.9
