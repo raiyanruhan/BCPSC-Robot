@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robot-brain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: robot-brain
+  template:
+    metadata:
+      labels:
+        app: robot-brain
+    spec:
+      containers:
+      - name: robot-brain
+        image: robot-brain:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: REDIS_URL
+          value: "redis://redis-service:6379/0"
+        # Mount config.md via ConfigMap or Secret in real prod
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config.md
+          subPath: config.md
+      volumes:
+      - name: config-volume
+        configMap:
+          name: robot-brain-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: robot-brain-service
+spec:
+  selector:
+    app: robot-brain
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer

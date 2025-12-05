@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+google-generativeai
+redis
+aioredis
+httpx
+pydantic
+pydantic-settings
+prometheus-client
+python-multipart
+pyyaml
+# Dev dependencies
+pytest
+pytest-asyncio
+pytest-mock
+responses
+black
+isort
+flake8
