@@ -106,7 +106,10 @@ Runs **three main parallel sectors** on Raspberry Pi:
 <div align="center">
   <img src="https://res.cloudinary.com/dzjrhl1vi/image/upload/v1765031240/uploads/1765031231875-diagram-export-12-6-2025-6_58_42-PM.png.png" alt="Alt text">
 </div>
+
+
 ---
+
 ## System Philosophy
 
 * Flexible → always provide a response.
