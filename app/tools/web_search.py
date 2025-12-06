@@ -47,11 +47,11 @@ async def web_search(args: WebSearchArgs) -> dict:
 
 definition = {
     "name": "webSearch",
-    "description": "Search the web using Google Search / CSE and return top results (title, snippet, url). Use this for general web searches, celebrity information, or when you need current/real-time information. For person names, consider using searchPerson tool first (it will route celebrities appropriately).",
+    "description": "Search the web using Google Search / CSE and return top results (title, snippet, url). CRITICAL: DO NOT use this tool for person queries like 'who is [name]' - use searchPerson tool instead, which searches school database first. Use webSearch ONLY for: general web searches (non-person queries), current events, news, general information, or when you need to find information that's clearly not about a person. When the user asks you to 'search for' something that is NOT a person name, immediately call this tool with the search query.",
     "parameters": {
         "type": "object",
         "properties": {
-            "query": {"type": "string"},
+            "query": {"type": "string", "description": "The search query to look up on the web. Use clear, specific search terms. DO NOT use for person names - use searchPerson instead."},
             "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}
         },
         "required": ["query"]

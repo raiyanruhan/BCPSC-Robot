@@ -124,6 +124,7 @@ class Orchestrator:
         # Loop for tool calls
         loop_active = True
         current_message = message
+        user_message_added = False  # Track if user message has been added to history
         
         # We need to accumulate the assistant's response to add to history for the next step
         # But since we are streaming, we build it up.
@@ -136,16 +137,7 @@ class Orchestrator:
             # Call LLM
             # We need to pass the updated history.
             # If this is the first iteration, `current_message` is the user message.
-            # If this is subsequent iteration (after tool execution), `current_message` is the tool output?
-            # No, in Gemini `send_message` handles the user message.
-            # If we are sending tool outputs, we send them as a message with role 'function'?
-            # The SDK `chat.send_message` handles this.
-            
-            # Wait, my `gemini_client` wrapper creates a NEW chat session every time.
-            # This is inefficient and might break context if we don't pass the FULL history including the intermediate tool calls.
-            # So `history` must be updated.
-            
-            # Let's assume `gemini_client.stream_chat` yields events.
+            # If this is subsequent iteration (after tool execution), `current_message` is the tool output.
             
             # We need to capture the full response to update history.
             full_response_text = ""
@@ -178,60 +170,15 @@ class Orchestrator:
                 for fc, res in zip(function_call_parts, results):
                     yield json.dumps({"event": "tool_result", "data": {"name": fc["function_name"], "result": res}})
                 
-                # Update history with the Assistant's Function Call and the Function Response
-                # We need to construct the history objects correctly for Gemini.
-                # This is getting complicated to do with a stateless wrapper.
-                # It's better if `gemini_client` exposed a stateful chat session or if we manually constructed the Content objects.
-                
-                # For this task, I will simplify:
-                # 1. Add User message to history.
-                # 2. Add Model response (function call) to history.
-                # 3. Add Function response to history.
-                # 4. Call model again with empty text? Or with the function response?
-                
-                # In `google-generativeai`, `chat.send_message` returns a response.
-                # If we use `chat.send_message(tool_outputs)`, it continues.
-                
-                # I should refactor `gemini_client` to return the `chat` object or handle the loop internally?
-                # Or just pass the accumulated history.
-                
-                # Let's update history manually.
-                # User message is already handled by `start_chat` if we pass it as history? No, `start_chat(history=...)` sets past history.
-                # The `message` arg in `stream_chat` is the NEW message.
-                
-                # So:
-                # 1. `history` has past turns.
-                # 2. `stream_chat` sends `message` (User).
-                # 3. We get `function_call`.
-                # 4. We execute tools.
-                # 5. We need to call `stream_chat` again.
-                #    But `stream_chat` starts a NEW chat.
-                #    So we must append (User: message), (Model: function_call), (Function: result) to `history`.
-                #    And then call `stream_chat` with a dummy message or just the function result?
-                
-                # Actually, `chat.send_message` is what we want.
-                # If I recreate `chat` every time, I must reconstruct the state.
-                
-                # Let's try to make `gemini_client` more flexible or just handle the history construction here.
-                # Constructing `content_types.ContentDict` is verbose.
-                
-                # Alternative: Use a persistent `ChatSession` in `gemini_client`?
-                # But this is a REST API, we don't keep state between requests easily unless we serialize it.
-                # The user request `POST /chat` implies a single turn or sending full history.
-                # Let's assume we send full history.
-                
-                # Update history:
-                # User message
-                history.append({"role": "user", "parts": [message]})
+                # Update history with the User message (only once), Model function call, and Function response
+                # User message (only add once, on first iteration)
+                if not user_message_added:
+                    history.append({"role": "user", "parts": [message]})
+                    user_message_added = True
                 
                 # Model function call
                 parts = []
                 for fc in function_call_parts:
-                    # Construct part for function call
-                    # This is tricky without the SDK objects.
-                    # The SDK expects `Part(function_call=FunctionCall(...))`
-                    # We can use `genai.protos.Part` or dicts if supported.
-                    # `content_types.to_content` handles dicts.
                     parts.append({
                         "function_call": {
                             "name": fc["function_name"],
@@ -251,81 +198,11 @@ class Orchestrator:
                     })
                 history.append({"role": "function", "parts": parts})
                 
-                # Prepare for next iteration
-                # The next message to send is... nothing? We just want the model to continue.
-                # But `chat.send_message` expects a message.
-                # If we reconstructed the history, we can just call `chat.send_message` with the LAST part?
-                # No, `start_chat(history=...)` initializes the state.
-                # If the last item in history is `function_response`, the model should generate the next response automatically?
-                # No, we need to trigger generation.
-                # In the stateless approach:
-                # We pass `history` (which now ends with function_response).
-                # And we send an empty message? Or we don't send a message, just `model.generate_content(history)`?
-                # `chat.send_message` adds to history.
-                
-                # Actually, if we use `model.generate_content(history)`, it generates the NEXT message.
-                # So we don't use `chat` object, we just use `generate_content`.
-                # But `generate_content` is not chat-aware unless we format history correctly.
-                
-                # Let's change `gemini_client.stream_chat` to accept `history` and `message` is optional?
-                # Or just use `chat.send_message` but we need to be careful about what we send.
-                
-                # If I append everything to `history`, then I can start a chat with `history[:-1]` and send `history[-1]`?
-                # That works.
-                
-                # So:
-                # 1. Append User message to `history`.
-                # 2. Call LLM (send `message`).
-                # 3. Get Function Call.
-                # 4. Append Model (FC) to `history`.
-                # 5. Execute tools.
-                # 6. Append Function (Response) to `history`.
-                # 7. Loop: Call LLM (send... what?).
-                #    If we start a new chat with `history` (including function response), we can send an empty message or prompt it to continue?
-                #    Actually, if we use `chat.send_message`, we are sending a NEW user message.
-                #    But here we are in the middle of a turn.
-                #    The "Function" role is a user-side role in some APIs, but in Gemini it's distinct.
-                
-                # Correct flow with `chat` object:
-                # chat = model.start_chat()
-                # response = chat.send_message(user_msg)
-                # if response.parts[0].function_call:
-                #    tool_output = ...
-                #    response = chat.send_message(tool_output) # Send function response
-                
-                # Since I am stateless, I need to simulate this.
-                # I can reconstruct the `chat` object with history up to the user message.
-                # Then `send_message` (User message).
-                # Receive FC.
-                # Then I have a problem: I can't easily "continue" the same `chat` object instance if I lost it.
-                # But I can recreate it.
-                # `chat = model.start_chat(history=history_with_user_and_fc)`
-                # `response = chat.send_message(function_response)`
-                
-                # YES. This is the way.
-                
-                # So, in the loop:
-                # `current_message` will be the content to send.
-                # In first iteration: `current_message` = User text. `history` = past conversation.
-                # In next iteration: `current_message` = Function Response part. `history` = past + User + Model(FC).
-                
-                # Update `current_message` to be the function response parts.
-                # Note: `gemini_client.stream_chat` expects `message` as str?
-                # I defined it as `str`. I should update it to accept `Union[str, List[Part]]`.
-                
-                # Let's update `gemini_client.py` first to be more flexible.
-                
-                # But wait, `gemini_client.stream_chat` takes `message: str`.
-                # I should change it to `message: Union[str, Any]`.
-                
-                # Also, I need to handle the `history` update correctly in `Orchestrator`.
-                
-                # Let's modify `gemini_client.py` to allow sending non-string messages (like function responses).
-                
+                # Prepare for next iteration - send function response as message
                 loop_active = True
                 
                 # Prepare the message for the next iteration (Function Response)
-                # We need to construct the parts.
+                # Construct as list of parts that can be sent to the model
                 response_parts = []
                 for fc, res in zip(function_call_parts, results):
                     response_parts.append(
@@ -340,6 +217,13 @@ class Orchestrator:
                 
             else:
                 # No function calls, we are done.
+                # If we had text response, add it to history
+                if full_response_text and not user_message_added:
+                    # This shouldn't happen normally, but handle it
+                    history.append({"role": "user", "parts": [message]})
+                    user_message_added = True
+                if full_response_text:
+                    history.append({"role": "model", "parts": [full_response_text]})
                 loop_active = False
 
 orchestrator = Orchestrator()

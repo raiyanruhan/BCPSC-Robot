@@ -9,6 +9,7 @@ pydantic-settings
 prometheus-client
 python-multipart
 pyyaml
+rapidfuzz
 # Dev dependencies
 pytest
 pytest-asyncio
