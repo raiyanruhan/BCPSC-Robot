@@ -1,9 +1,7 @@
 <div align="center">
   <img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
 </div>
-<div align="center">
-  <img src="https://res.cloudinary.com/dzjrhl1vi/image/upload/v1765031240/uploads/1765031231875-diagram-export-12-6-2025-6_58_42-PM.png.png" alt="Alt text">
-</div>
+
 # BCPSC Robot (System Design)
 
 ## Input & Sensing
@@ -106,7 +104,9 @@ Runs **three main parallel sectors** on Raspberry Pi:
   * **Fallback**: Switch back to IndicTTS if API fails.
 
 ---
-
+<div align="center">
+  <img src="https://res.cloudinary.com/dzjrhl1vi/image/upload/v1765031240/uploads/1765031231875-diagram-export-12-6-2025-6_58_42-PM.png.png" alt="Alt text">
+</div>
 ## System Philosophy
 
 * Flexible → always provide a response.
