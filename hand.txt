@@ -1,0 +1,21 @@
+Best Degree List:
+
+Thumb:
+Open 26
+FIsted 135
+
+Index:
+Open 180
+FIsted 0
+
+Middle:
+Open 168
+FIsted 40
+
+Ring:
+Open 159
+FIsted 32
+k
+Little:
+Open 0
+FIsted 150
