@@ -11,8 +11,11 @@ const char* ap_password = "InMoov2024"; // Default AP password
 const char* wifi_ssid = ".";
 const char* wifi_password = "###A1a2a3###";
 
-// ESP8266 Hand Controller IP
+// ESP8266 Hand Controller IP (WiFi - MANDATORY)
 const char* handControllerIP = "192.168.4.2";
+
+// HTTP Communication for Hand (WiFi is MANDATORY)
+// Serial2/RX-TX communication is OPTIONAL and not used for hand control
 
 Preferences preferences;
 
@@ -34,9 +37,9 @@ float currentPos = EYE_CENTER;
 float targetPos = EYE_CENTER;
 const float eyeAlpha = 0.08;  // Smoothing coefficient for EMA (0.05-0.15 works well)
 
-// Jaw calibration (20 = fully closed, 120 = fully open)
+// Jaw calibration (20 = fully closed, 54 = fully open)
 #define JAW_CLOSED 20
-#define JAW_OPEN 120
+#define JAW_OPEN 54
 #define JAW_HALF_OPEN 70
 
 // Jaw movement variables
@@ -171,6 +174,20 @@ void setup() {
   
   Serial.println("\nSerial command interface ready");
   Serial.println("Send JSON commands: {\"command\":\"HAND:FIST\"}");
+  Serial.println("\nWiFi Communication with ESP8266:");
+  Serial.println("  - ESP8266 IP: " + String(handControllerIP));
+  Serial.println("  - WiFi is MANDATORY for hand control");
+  Serial.println("  - Serial2/RX-TX is OPTIONAL and not used");
+  
+  // Initial check for ESP8266 connection
+  Serial.println("\nChecking ESP8266 connection...");
+  checkHandControllerConnection();
+  if (handControllerConnected) {
+    Serial.println("✓ ESP8266 hand controller is reachable via WiFi");
+  } else {
+    Serial.println("⚠ ESP8266 hand controller not reachable - will retry in loop()");
+    Serial.println("  Make sure ESP8266 is connected to AP: " + String(ap_ssid));
+  }
   
   server.on("/", handleRoot);
   server.on("/control", handleControl);
@@ -246,6 +263,9 @@ void loop() {
       updateTalkingAnimation();
     } else if (jawManualControl) {
       jawTargetPos = jawManualPosition;
+      nextJawAction = now + 100;
+    } else if (jawMode == "Serial") {
+      // Serial control - just maintain target position, no idle animations
       nextJawAction = now + 100;
     } else {
       updateJawIdle();
@@ -340,15 +360,12 @@ void updateJawMovement() {
   float smoothFactor = 0.25;
   float maxSpeed = 15.0;
   
-  if (jawTalking) {
-    // Fast talking movements
-    smoothFactor = 0.4;
-    maxSpeed = 25.0;
-  } else if (jawMode == "Yawning") {
+  if (jawMode == "Yawning") {
     // Slow yawning
     smoothFactor = 0.1;
     maxSpeed = 8.0;
   }
+  // Note: Talking and chewing now use same default physics (smoothFactor 0.25, maxSpeed 15.0)
   
   // Calculate velocity with acceleration
   float acceleration = diff * smoothFactor;
@@ -724,7 +741,7 @@ void handleRoot() {
   html += "<div class='slider-label' style='margin-top:15px'>TALK SPEED <span class='slider-value' id='talkSpeedVal'>50</span>%</div>";
   html += "<input type='range' min='0' max='100' value='50' id='talkSpeed' oninput=\"setTalkSpeed(this.value)\">";
   html += "<div class='slider-label' style='margin-top:15px'>MANUAL JAW <span class='slider-value' id='jawManVal'>20</span></div>";
-  html += "<input type='range' min='20' max='120' value='20' id='jawManual' oninput=\"setJawManual(this.value)\">";
+  html += "<input type='range' min='20' max='54' value='20' id='jawManual' oninput=\"setJawManual(this.value)\">";
   html += "<div class='btn-group' style='margin-top:15px'>";
   html += "<button class='btn' onclick=\"jawCmd('manualOn')\">MANUAL ON</button>";
   html += "<button class='btn btn-stop' onclick=\"jawCmd('manualOff')\">AUTO MODE</button>";
@@ -905,6 +922,7 @@ void handleStatus() {
   if (!jawActive) json += "Inactive";
   else if (jawYawning) json += "Yawning";
   else if (jawTalking || jawChewing) json += jawMode;
+  else if (jawMode == "Serial") json += "Serial";
   else if (jawManualControl) json += "Manual";
   else json += jawMode;
   json += "\",\"handConnected\":" + String(handControllerConnected ? "true" : "false");
@@ -1105,7 +1123,33 @@ bool executeJawCommand(String cmd) {
     nextHandGesture = millis() + 500; // Start gestures after 500ms
     return true;
   }
-  
+  else if (cmd.startsWith("SET:")) {
+    // Format: SET:<float> where float is 0.0 to 1.0 (openness)
+    String valueStr = cmd.substring(4);
+    float openness = valueStr.toFloat();
+
+    // Clamp openness between 0.0 and 1.0
+    openness = constrain(openness, 0.0, 1.0);
+
+    // Convert openness to angle: angle = 20 + openness * 34
+    float angle = JAW_CLOSED + openness * (JAW_OPEN - JAW_CLOSED);
+
+    // Clamp final angle to 20..54
+    angle = constrain(angle, JAW_CLOSED, JAW_OPEN);
+
+    // Set jaw target position and override any automated behavior
+    jawActive = true;
+    jawTalking = false;
+    jawYawning = false;
+    jawChewing = false;
+    jawManualControl = false; // Use a separate mode for serial control
+    jawMode = "Serial";
+    jawTargetPos = angle;
+    handGesturingActive = false; // Stop hand gestures
+
+    return true;
+  }
+
   return false;
 }
 
@@ -1124,21 +1168,7 @@ bool sendHandCommand(String cmd) {
       value = constrain(value, 0, 180);
       String endpoint = "/set?f=" + finger + "&v=" + String(value);
       
-      // Send HTTP request
-      HTTPClient http;
-      String url = "http://" + String(handControllerIP) + endpoint;
-      http.begin(url);
-      http.setTimeout(1000);
-      int httpCode = http.GET();
-      http.end();
-      
-      if (httpCode == 200) {
-        handControllerConnected = true;
-        return true;
-      } else {
-        handControllerConnected = false;
-        return false;
-      }
+      return sendHTTPRequest(endpoint);
     } else {
       return false;
     }
@@ -1187,32 +1217,7 @@ bool sendHandCommand(String cmd) {
   }
   
   // Send HTTP request to ESP8266
-  HTTPClient http;
-  String url = "http://" + String(handControllerIP) + endpoint;
-  
-  // #region agent log
-  debugLog("sendHandCommand:1151", "Sending HTTP request", "H3", "url=" + url);
-  // #endregion
-  
-  http.begin(url);
-  http.setTimeout(1000);
-  int httpCode = http.GET();
-  http.end();
-  
-  // #region agent log
-  debugLog("sendHandCommand:1158", "HTTP request result", "H3", "endpoint=" + endpoint + " code=" + String(httpCode));
-  // #endregion
-  
-  if (httpCode == 200) {
-    handControllerConnected = true;
-    return true;
-  } else {
-    // #region agent log
-    debugLog("sendHandCommand:1165", "HTTP request failed", "H3", "endpoint=" + endpoint + " code=" + String(httpCode));
-    // #endregion
-    handControllerConnected = false;
-    return false;
-  }
+  return sendHTTPRequest(endpoint);
 }
 
 void sendSerialResponse(String status, String message) {
@@ -1226,15 +1231,26 @@ void sendSerialResponse(String status, String message) {
 }
 
 void checkHandControllerConnection() {
+  // Check ESP8266 connection via WiFi (MANDATORY)
   HTTPClient http;
   String url = "http://" + String(handControllerIP) + "/status";
   
   http.begin(url);
-  http.setTimeout(500);
-  int httpCode = http.GET();
-  http.end();
+  http.setTimeout(2000); // 2 second timeout
+  http.setReuse(true);
   
-  handControllerConnected = (httpCode == 200);
+  int httpCode = http.GET();
+  
+  if (httpCode == 200) {
+    handControllerConnected = true;
+  } else {
+    handControllerConnected = false;
+    // #region agent log
+    debugLog("checkHandControllerConnection", "ESP8266 not reachable via WiFi", "H3", "code=" + String(httpCode));
+    // #endregion
+  }
+  
+  http.end();
 }
 
 void updateShakeSequence() {
@@ -1335,31 +1351,41 @@ bool sendHandCommandDirect(String cmd) {
     return false;
   }
   
-  // Send HTTP request to ESP8266
+  return sendHTTPRequest(endpoint);
+}
+
+// Helper function to send HTTP requests to ESP8266 via WiFi (MANDATORY)
+bool sendHTTPRequest(String endpoint) {
+  // Ensure WiFi is available (AP mode should always be active)
+  if (WiFi.getMode() == WIFI_OFF) {
+    debugLog("sendHTTPRequest", "WiFi not initialized", "H3", "");
+    handControllerConnected = false;
+    return false;
+  }
+  
   HTTPClient http;
   String url = "http://" + String(handControllerIP) + endpoint;
   
   // #region agent log
-  debugLog("sendHandCommandDirect:1277", "Sending HTTP request (direct)", "H3", "url=" + url);
+  debugLog("sendHTTPRequest", "Sending HTTP request via WiFi", "H3", "url=" + url);
   // #endregion
   
   http.begin(url);
-  http.setTimeout(1000);
-  int httpCode = http.GET();
-  http.end();
+  http.setTimeout(2000); // 2 second timeout for reliability
+  http.setReuse(true); // Reuse connection for better performance
   
-  // #region agent log
-  debugLog("sendHandCommandDirect:1284", "HTTP request result (direct)", "H3", "endpoint=" + endpoint + " code=" + String(httpCode));
-  // #endregion
+  int httpCode = http.GET();
   
   if (httpCode == 200) {
     handControllerConnected = true;
+    http.end();
     return true;
   } else {
     // #region agent log
-    debugLog("sendHandCommandDirect:1291", "HTTP request failed (direct)", "H3", "endpoint=" + endpoint + " code=" + String(httpCode));
+    debugLog("sendHTTPRequest", "HTTP request failed", "H3", "code=" + String(httpCode) + " endpoint=" + endpoint);
     // #endregion
     handControllerConnected = false;
+    http.end();
     return false;
   }
 }

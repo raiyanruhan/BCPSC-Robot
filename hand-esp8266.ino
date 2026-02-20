@@ -3,10 +3,16 @@
 #include <Servo.h>
 
 // ================= WIFI =================
+// WiFi is MANDATORY - connects to ESP32 Access Point
 const char* ssid = "InMoov-Control";
 const char* password = "InMoov2024";
 
 ESP8266WebServer server(80);
+
+// WiFi connection status
+bool wifiConnected = false;
+unsigned long lastWifiReconnectAttempt = 0;
+const unsigned long WIFI_RECONNECT_INTERVAL = 5000; // Try to reconnect every 5 seconds
 
 // ================= SERVOS =================
 Servo Thumb, Index, Middle, Ring, Little;
@@ -269,26 +275,32 @@ void setup() {
   
   WiFi.config(localIP, gateway, subnet);
   
-  Serial.print("Connecting to ");
+  Serial.print("Connecting to WiFi AP: ");
   Serial.println(ssid);
+  Serial.println("WiFi is MANDATORY - will retry until connected...");
   
+  // WiFi connection is mandatory - keep trying until connected
   WiFi.begin(ssid, password);
   
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 60) { // Increased timeout
     delay(500);
     Serial.print(".");
     attempts++;
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected!");
+    wifiConnected = true;
+    Serial.println("\n✓ WiFi connected!");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
+    Serial.println("Ready to receive commands from ESP32");
   } else {
-    Serial.println("\nWiFi connection failed!");
+    Serial.println("\n⚠ WiFi connection failed - will retry in loop()");
+    wifiConnected = false;
+    lastWifiReconnectAttempt = millis();
     // #region agent log
-    Serial.println("{\"timestamp\":" + String(millis()) + ",\"location\":\"setup:289\",\"message\":\"WiFi connection failed\",\"hypothesisId\":\"H7\",\"data\":\"attempts=30\",\"sessionId\":\"debug-session\"}");
+    Serial.println("{\"timestamp\":" + String(millis()) + ",\"location\":\"setup:289\",\"message\":\"WiFi connection failed - will retry\",\"hypothesisId\":\"H7\",\"data\":\"attempts=60\",\"sessionId\":\"debug-session\"}");
     // #endregion
   }
 
@@ -361,7 +373,8 @@ void setup() {
 
   // Health check endpoint
   server.on("/status", [](){
-    server.send(200,"application/json","{\"status\":\"ok\",\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+    String status = (WiFi.status() == WL_CONNECTED) ? "ok" : "disconnected";
+    server.send(200,"application/json","{\"status\":\"" + status + "\",\"ip\":\"" + WiFi.localIP().toString() + "\",\"wifi\":\"" + String(WiFi.status()) + "\"}");
   });
 
   server.begin();
@@ -369,5 +382,116 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();
+  // WiFi connection is mandatory - check and reconnect if needed
+  unsigned long now = millis();
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiConnected = false;
+    
+    // Try to reconnect every WIFI_RECONNECT_INTERVAL
+    if (now - lastWifiReconnectAttempt >= WIFI_RECONNECT_INTERVAL) {
+      lastWifiReconnectAttempt = now;
+      Serial.println("WiFi disconnected - attempting to reconnect...");
+      
+      WiFi.disconnect();
+      delay(100);
+      WiFi.begin(ssid, password);
+      
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        wifiConnected = true;
+        Serial.println("\n✓ WiFi reconnected!");
+        Serial.print("IP address: ");
+        Serial.println(WiFi.localIP());
+      } else {
+        Serial.println("\n⚠ Reconnection failed - will retry...");
+      }
+    }
+  } else {
+    wifiConnected = true;
+  }
+  
+  // Only handle server requests if WiFi is connected
+  if (wifiConnected) {
+    server.handleClient();
+  }
+  
+  // Serial input processing (optional - for debugging)
+  processSerialInput();
+}
+
+// Buffer for serial data
+String inputBuffer = "";
+
+void processSerialInput() {
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (inputBuffer.length() > 0) {
+        executeCommand(inputBuffer);
+        inputBuffer = "";
+      }
+    } else {
+      inputBuffer += c;
+    }
+  }
+}
+
+void executeCommand(String cmd) {
+  cmd.trim();
+  cmd.toLowerCase();
+  
+  // Format: "set?f=index&v=90" or just "fist"
+  
+  if (cmd.startsWith("set?")) {
+    // Parse set command
+    // Expected format: set?f=finger&v=value
+    int fIdx = cmd.indexOf("f=");
+    int vIdx = cmd.indexOf("&v=");
+    
+    if (fIdx != -1 && vIdx != -1) {
+      String finger = cmd.substring(fIdx + 2, vIdx);
+      int value = cmd.substring(vIdx + 3).toInt();
+      value = constrain(value, 0, 180);
+      
+      if(finger=="thumb") Thumb.write(value);
+      else if(finger=="index") Index.write(value);
+      else if(finger=="middle") Middle.write(value);
+      else if(finger=="ring") Ring.write(value);
+      else if(finger=="little") Little.write(value);
+    }
+  }
+  else {
+    // Direct commands
+    if (cmd == "fist") fist();
+    else if (cmd == "open") openHand();
+    else if (cmd == "thumbsup" || cmd == "like") thumbsUp();
+    else if (cmd == "thumbsdown") thumbsDown();
+    else if (cmd == "peace") peaceSign();
+    else if (cmd == "ok") okSign();
+    else if (cmd == "point") pointing();
+    else if (cmd == "pinch") pinching();
+    else if (cmd == "pinkyup") pinkyUp();
+    else if (cmd == "pinkyringup") pinkyRingUp();
+    else if (cmd == "allfingersextended") allFingersExtended();
+    else if (cmd == "allfingerscurled") allFingersCurled();
+    else if (cmd == "gimme") gimme();
+    else if (cmd == "spider") spider();
+    else if (cmd == "claw") claw();
+    else if (cmd == "iloveyou") iLoveYou();
+    else if (cmd == "stop") stopGesture();
+    else if (cmd == "swag") swagGesture();
+    else if (cmd == "handshake") handshakeGesture();
+    else if (cmd == "number1") number1();
+    else if (cmd == "number2") number2();
+    else if (cmd == "number3") number3();
+    else if (cmd == "number4") number4();
+    else if (cmd == "number5") number5();
+  }
 }
