@@ -1,7 +1,9 @@
+<!--
+<img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
+-->
 <div align="center">
-  <img src="https://www.bcpsc.edu.bd/media/BCPSC.png" alt="Alt text">
+  <img src="[https://www.bcpsc.edu.bd/media/BCPSC.png](https://res.cloudinary.com/dzjrhl1vi/image/upload/v1774161413/uploads/1774161409936-WhatsApp%20Image%202026-03-21%20at%209.03.54%20PM.jpeg.jpg)" alt="Alt text">
 </div>
-
 # BCPSC Robot (System Design)
 
 ## Input & Sensing
