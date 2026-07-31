@@ -12,7 +12,7 @@ ESP8266WebServer server(80);
 // WiFi connection status
 bool wifiConnected = false;
 unsigned long lastWifiReconnectAttempt = 0;
-const unsigned long WIFI_RECONNECT_INTERVAL = 5000; // Try to reconnect every 5 seconds
+const unsigned long WIFI_RECONNECT_INTERVAL = 3000; // Non-blocking reconnect attempt every 3 seconds
 
 // ================= SERVOS =================
 Servo Thumb, Index, Middle, Ring, Little;
@@ -382,47 +382,27 @@ void setup() {
 }
 
 void loop() {
-  // WiFi connection is mandatory - check and reconnect if needed
   unsigned long now = millis();
-  
+
   if (WiFi.status() != WL_CONNECTED) {
     wifiConnected = false;
-    
-    // Try to reconnect every WIFI_RECONNECT_INTERVAL
     if (now - lastWifiReconnectAttempt >= WIFI_RECONNECT_INTERVAL) {
       lastWifiReconnectAttempt = now;
-      Serial.println("WiFi disconnected - attempting to reconnect...");
-      
+      Serial.println("Attempting WiFi reconnect...");
       WiFi.disconnect();
-      delay(100);
       WiFi.begin(ssid, password);
-      
-      int attempts = 0;
-      while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-      }
-      
-      if (WiFi.status() == WL_CONNECTED) {
-        wifiConnected = true;
-        Serial.println("\n✓ WiFi reconnected!");
-        Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
-      } else {
-        Serial.println("\n⚠ Reconnection failed - will retry...");
-      }
     }
   } else {
+    if (!wifiConnected) {
+      Serial.println("WiFi connected! IP: " + WiFi.localIP().toString());
+    }
     wifiConnected = true;
   }
-  
-  // Only handle server requests if WiFi is connected
+
   if (wifiConnected) {
     server.handleClient();
   }
-  
-  // Serial input processing (optional - for debugging)
+
   processSerialInput();
 }
 

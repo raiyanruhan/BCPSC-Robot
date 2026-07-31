@@ -133,45 +133,28 @@ void setup() {
   jawCurrentPos = JAW_CLOSED;
   jawTargetPos = JAW_CLOSED;
   
-  // Setup WiFi AP mode
+  // Setup WiFi AP mode (AP-only for stability: STA+AP shares one radio and destabilizes the AP)
   Serial.println("\nSetting up Access Point...");
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_AP);
   
   // Get AP password from preferences or use default
   String storedPassword = preferences.getString("ap_password", ap_password);
   
-  // Create Access Point
+  // Create Access Point: channel 1, max 4 clients (fixed channel avoids silent client drops)
   IPAddress apIP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
   
   WiFi.softAPConfig(apIP, gateway, subnet);
-  WiFi.softAP(ap_ssid, storedPassword.c_str());
+  WiFi.softAP(ap_ssid, storedPassword.c_str(), 1, 0, 4);
   
   Serial.print("AP Started: ");
   Serial.println(ap_ssid);
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
+  Serial.println("(AP-only mode for stable hand controller connection)");
   
-  // Try to connect to external WiFi (optional)
-  Serial.println("\nConnecting to external WiFi...");
-  WiFi.begin(wifi_ssid, wifi_password);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✓ External WiFi Connected!");
-    Serial.print("Station IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\n⚠ External WiFi not connected (using AP only)");
-  }
-  
+  // External STA connection disabled to keep AP stable; re-enable only if needed
   Serial.println("\nSerial command interface ready");
   Serial.println("Send JSON commands: {\"command\":\"HAND:FIST\"}");
   Serial.println("\nWiFi Communication with ESP8266:");
