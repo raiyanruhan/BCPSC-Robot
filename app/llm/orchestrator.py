@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import json
-from typing import AsyncGenerator, List, Dict, Any
+from typing import AsyncGenerator, List, Dict, Any, Optional
 from app.llm.gemini_client import gemini_client
 from app.llm.context_manager import context_manager
 from app.tools import TOOL_DEFINITIONS, TOOL_FUNCTIONS
@@ -57,16 +57,24 @@ class Orchestrator:
             logger.error(f"Error executing tool {name}: {e}")
             return {"error": str(e)}
 
-    async def process_chat(self, message: str, history: List[Dict[str, Any]]) -> AsyncGenerator[str, None]:
+    async def process_chat(self, message: str, history: List[Dict[str, Any]], face_context: Optional[Dict[str, Any]] = None) -> AsyncGenerator[str, None]:
         """
         Main loop: User -> LLM -> [Tools] -> LLM -> User
         Yields SSE events as JSON strings.
+        
+        Note: history is modified in place to maintain conversation context.
+        
+        Args:
+            message: User message
+            history: Conversation history (modified in place)
+            face_context: Optional face recognition context with 'recognized' (list) and 'unknown_count' (int)
         """
         
-        # Enrich history with context awareness
+        # Enrich history with context awareness (creates normalized copy for processing)
         enriched_history = context_manager.enrich_history_with_context(history, message)
         
         # Build contextual message with awareness of what's happening
+        # Pass original history length for first message detection
         from app.tools.device_control import PENDING_ACTIONS
         pending_count = len([a for a in PENDING_ACTIONS.values() if a.get("status") == "pending_confirmation"])
         
@@ -86,17 +94,24 @@ class Orchestrator:
             "active_tools": list(set(recent_tools[-5:]))  # Last 5 unique tools
         }
         
+        # Add face context if provided
+        if face_context:
+            current_state["face_context"] = face_context
+        
+        # Pass original history for first message detection, enriched_history for context
         contextual_message = context_manager.build_contextual_message(
             message,
             enriched_history,
-            current_state
+            current_state,
+            original_history_length=len(history)  # Pass original history length
         )
         
         # First call to LLM with enriched context
-        async for event in self._run_llm_step(enriched_history, contextual_message):
+        # Use enriched_history for processing, but update original history list
+        async for event in self._run_llm_step(enriched_history, contextual_message, original_history=history, original_message=message):
             yield event
             
-    async def _run_llm_step(self, history: List[Any], message: str) -> AsyncGenerator[str, None]:
+    async def _run_llm_step(self, history: List[Any], message: str, original_history: List[Any] = None, original_message: str = None) -> AsyncGenerator[str, None]:
         # This function handles one turn of LLM generation, potentially recursing if tools are called.
         # Actually, recursion is tricky with generators. Iteration is better.
         
@@ -170,10 +185,15 @@ class Orchestrator:
                 for fc, res in zip(function_call_parts, results):
                     yield json.dumps({"event": "tool_result", "data": {"name": fc["function_name"], "result": res}})
                 
-                # Update history with the User message (only once), Model function call, and Function response
+                # Update both enriched_history and original_history
                 # User message (only add once, on first iteration)
+                # Use original_message if provided, otherwise use contextual message
+                user_msg_text = original_message if original_message is not None else message
                 if not user_message_added:
-                    history.append({"role": "user", "parts": [message]})
+                    user_msg = {"role": "user", "parts": [user_msg_text]}
+                    history.append(user_msg)
+                    if original_history is not None:
+                        original_history.append(user_msg)
                     user_message_added = True
                 
                 # Model function call
@@ -185,7 +205,10 @@ class Orchestrator:
                             "args": fc["args"]
                         }
                     })
-                history.append({"role": "model", "parts": parts})
+                model_call = {"role": "model", "parts": parts}
+                history.append(model_call)
+                if original_history is not None:
+                    original_history.append(model_call)
                 
                 # Function response
                 parts = []
@@ -196,7 +219,10 @@ class Orchestrator:
                             "response": {"result": res} # Response must be a dict
                         }
                     })
-                history.append({"role": "function", "parts": parts})
+                func_response = {"role": "function", "parts": parts}
+                history.append(func_response)
+                if original_history is not None:
+                    original_history.append(func_response)
                 
                 # Prepare for next iteration - send function response as message
                 loop_active = True
@@ -218,12 +244,19 @@ class Orchestrator:
             else:
                 # No function calls, we are done.
                 # If we had text response, add it to history
+                user_msg_text = original_message if original_message is not None else message
                 if full_response_text and not user_message_added:
                     # This shouldn't happen normally, but handle it
-                    history.append({"role": "user", "parts": [message]})
+                    user_msg = {"role": "user", "parts": [user_msg_text]}
+                    history.append(user_msg)
+                    if original_history is not None:
+                        original_history.append(user_msg)
                     user_message_added = True
                 if full_response_text:
-                    history.append({"role": "model", "parts": [full_response_text]})
+                    model_response = {"role": "model", "parts": [full_response_text]}
+                    history.append(model_response)
+                    if original_history is not None:
+                        original_history.append(model_response)
                 loop_active = False
 
 orchestrator = Orchestrator()

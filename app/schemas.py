@@ -11,8 +11,11 @@ class GetWeatherForecastArgs(BaseModel):
     days_ahead: int = Field(..., ge=1, le=7, description="Number of days ahead for forecast (1-7)")
 
 class GetNewsArgs(BaseModel):
-    topic: Optional[str] = Field("general", description="News topic keyword or 'general' for top headlines")
-    limit: int = Field(3, ge=1, le=10, description="Number of articles")
+    topic: Optional[str] = Field(None, description="News topic keyword to search for (e.g., 'technology', 'politics', 'Bangladesh', 'sports'). If not provided, returns top headlines from default categories.")
+    country: Optional[str] = Field("bd", description="Country code filter (e.g., 'bd' for Bangladesh, 'us' for USA). Defaults to 'bd'.")
+    category: Optional[str] = Field("politics,sports,top,domestic,business", description="Category filter - comma-separated categories (e.g., 'politics,sports,top,domestic,business'). Defaults to 'politics,sports,top,domestic,business'.")
+    language: Optional[str] = Field("en", description="Language filter: 'en' for English or 'bn' for Bengali. Defaults to 'en'.")
+    limit: int = Field(3, ge=1, le=10, description="Number of articles to return (1-10). Defaults to 3.")
 
 class WebSearchArgs(BaseModel):
     query: str = Field(..., description="Search query")
@@ -46,3 +49,20 @@ class ControlDeviceArgs(BaseModel):
             except json.JSONDecodeError:
                 return {}
         return v if isinstance(v, dict) else {}
+
+class SwitchLanguageArgs(BaseModel):
+    language: Literal["en-US", "bn-BD"] = Field(..., description="Target language: 'en-US' for English, 'bn-BD' for Bangla")
+    reason: str = Field("", description="Reason for switching language")
+
+class GetFaceRecognitionInfoArgs(BaseModel):
+    """No arguments needed for this tool"""
+    pass
+
+class SavePersonFaceArgs(BaseModel):
+    person_name: str = Field(..., description="Full name of the person")
+    role: Optional[str] = Field(None, description="Role or position (e.g., 'Teacher', 'Student', 'Staff', 'Principal')")
+    additional_info: Optional[str] = Field(None, description="Any additional information about the person")
+
+class DescribeCircumstancesArgs(BaseModel):
+    """No arguments needed for this tool"""
+    pass

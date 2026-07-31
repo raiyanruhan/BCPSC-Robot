@@ -7,6 +7,10 @@ from .developer_info import definition as dev_def, get_developer_info
 from .person_search import definition as person_search_def, search_person
 from .robot_info import definition as robot_info_def, get_robot_info
 from .device_control import definition as device_def, control_device
+from .language_switch import definition as language_switch_def, switch_stt_language
+from .face_recognition_info import definition as face_info_def, get_face_recognition_info
+from .save_person_face import definition as save_person_face_def, save_person_face
+from .describe_circumstances import definition as describe_circumstances_def, describe_circumstances
 import copy
 
 def _convert_schema_for_gemini(schema, is_top_level=False):
@@ -92,7 +96,11 @@ TOOL_DEFINITIONS = [
     _convert_tool_for_gemini(dev_def),
     _convert_tool_for_gemini(person_search_def),
     _convert_tool_for_gemini(robot_info_def),
-    _convert_tool_for_gemini(device_def)
+    _convert_tool_for_gemini(device_def),
+    _convert_tool_for_gemini(language_switch_def),
+    _convert_tool_for_gemini(face_info_def),
+    _convert_tool_for_gemini(save_person_face_def),
+    _convert_tool_for_gemini(describe_circumstances_def)
 ]
 
 # Map function names to callables
@@ -105,5 +113,9 @@ TOOL_FUNCTIONS = {
     "getDeveloperInfo": get_developer_info,
     "searchPerson": search_person,
     "getRobotInfo": get_robot_info,
-    "controlDevice": control_device
+    "controlDevice": control_device,
+    "switchSTTLanguage": switch_stt_language,
+    "getFaceRecognitionInfo": get_face_recognition_info,
+    "savePersonFace": save_person_face,
+    "describeCircumstances": describe_circumstances
 }

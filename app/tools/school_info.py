@@ -450,11 +450,11 @@ async def get_school_info(args: GetSchoolInfoArgs) -> dict:
 
 definition = {
     "name": "getSchoolInfo",
-    "description": "Search for school information with fallback chain: 1) Local database (258 school members), 2) School-specific search engine, 3) International search engine, 4) Sorry response if not found. Always checks exclusive important names first.",
+    "description": "Search for school information with fallback chain: 1) Local database (258 school members) + exclusive.txt (Principal, Chairman, Chief Patron), 2) School-specific search engine, 3) International search engine, 4) Sorry response if not found. CRITICAL: For role-based queries (e.g., 'principal', 'chairman', 'chief patron'), this tool checks exclusive.txt FIRST which contains verified, accurate information. Always prioritize exclusive data over web search results.",
     "parameters": {
         "type": "object",
         "properties": {
-            "school_name": {"type": "string", "description": "Name of the school, person, or entity to search for"}
+            "school_name": {"type": "string", "description": "Name of the school, person, role (e.g., 'principal', 'chairman'), or entity to search for. For role queries like 'principal' or 'principal of BCPSC', use the role name directly (e.g., 'principal')."}
         },
         "required": ["school_name"]
     }

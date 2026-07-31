@@ -1,0 +1,6 @@
+# Core
+opencv-contrib-python>=4.8.0
+numpy>=1.24
+requests>=2.31
+psutil>=5.9
+pygame>=2.1.0

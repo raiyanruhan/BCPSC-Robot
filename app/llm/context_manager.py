@@ -26,7 +26,8 @@ class ContextManager:
         self,
         user_message: str,
         history: List[Dict[str, Any]],
-        current_state: Optional[Dict[str, Any]] = None
+        current_state: Optional[Dict[str, Any]] = None,
+        original_history_length: int = None
     ) -> str:
         """
         Builds an enriched, intelligent contextual message.
@@ -35,8 +36,13 @@ class ContextManager:
         # Extract semantic information from user message
         message_intent = self._analyze_message_intent(user_message)
         
-        # Check if this is the first message (no history or empty history)
-        is_first_message = not history or len(history) == 0
+        # Check if this is the first message
+        # Use original_history_length if provided (for accurate first message detection)
+        # Otherwise check enriched history length
+        if original_history_length is not None:
+            is_first_message = original_history_length == 0
+        else:
+            is_first_message = not history or len(history) == 0
         
         # Build context components
         context_components = []
@@ -45,41 +51,69 @@ class ContextManager:
         temporal_context = self._get_temporal_context()
         context_components.append(temporal_context)
         
-        # 2. First message indicator (for greeting)
+        # 2. Language detection and instruction (CRITICAL - place early)
+        language_instruction = self._detect_and_instruct_language(user_message, history)
+        if language_instruction:
+            context_components.append(language_instruction)
+        
+        # 2.5. Role query detection (CRITICAL - must be early and prominent)
+        if message_intent.get("type") == "role_query":
+            role_instruction = "CRITICAL TOOL SELECTION: The user is asking about a ROLE (Principal, Chairman, or Chief Patron). You MUST use getSchoolInfo tool with the role name (e.g., 'principal') as the query parameter. The getSchoolInfo tool checks exclusive.txt FIRST which contains verified, accurate information. NEVER use searchPerson or webSearch for role queries. NEVER make up or guess information about roles - only use data from exclusive.txt or the school database."
+            context_components.insert(2, role_instruction)  # Insert after language instruction
+        
+        # 2.6. Vision/circumstances query detection (CRITICAL - must be early and prominent)
+        if message_intent.get("type") == "vision_query":
+            vision_instruction = "CRITICAL TOOL SELECTION: The user is asking about circumstances, what you can see, or the current situation. You MUST immediately call the describeCircumstances tool. This tool captures a photo from the camera and uses Gemini vision to describe what is happening, who is present, and the environment. Do NOT say you don't have a camera or can't see - use the describeCircumstances tool to actually see and describe the current circumstances."
+            context_components.insert(2, vision_instruction)  # Insert after language instruction
+        
+        # 3. First message indicator (for greeting)
         if is_first_message:
             context_components.append("IMPORTANT: This is the FIRST message in this conversation. Greet with 'Assalamu Alaikum' only this time.")
         else:
             context_components.append("IMPORTANT: This is NOT the first message. Do NOT greet - answer directly without 'Assalamu Alaikum'.")
         
-        # 3. Conversation summary (intelligent compression)
+        # 4. Conversation summary (intelligent compression)
         if history and not is_first_message:
             conversation_summary = self._build_conversation_summary(history, user_message)
             if conversation_summary:
                 context_components.append(conversation_summary)
         
-        # 4. Current state (fixed bug here)
+        # 5. Current state (fixed bug here)
         if current_state and not is_first_message:
             state_context = self._format_current_state(current_state)
             if state_context:
                 context_components.append(state_context)
         
-        # 5. Relevant history (semantic relevance) - only if not first message
+        # 5.5. Face recognition context (visual awareness)
+        face_context = current_state.get("face_context") if current_state else None
+        if face_context:
+            recognized = face_context.get("recognized", [])
+            unknown_count = face_context.get("unknown_count", 0)
+            if recognized or unknown_count > 0:
+                context_text = "VISUAL CONTEXT: "
+                if recognized:
+                    context_text += f"Currently visible: {', '.join(recognized)}. "
+                if unknown_count > 0:
+                    context_text += f"Unknown persons: {unknown_count}."
+                context_components.append(context_text.strip())
+        
+        # 6. Relevant history (semantic relevance) - only if not first message
         if not is_first_message:
             relevant_history = self._extract_relevant_history(history, user_message, message_intent)
             if relevant_history:
                 context_components.append(relevant_history)
         
-        # 6. Tool usage patterns - only if not first message
+        # 7. Tool usage patterns - only if not first message
         if not is_first_message:
             tool_context = self._analyze_tool_usage(history)
             if tool_context:
                 context_components.append(tool_context)
         
-        # 7. Robot capabilities (condensed)
+        # 8. Robot capabilities (condensed)
         capabilities = self._get_robot_capabilities()
         context_components.append(capabilities)
         
-        # 8. STT/TTS reminder (important for response format)
+        # 9. STT/TTS reminder (important for response format)
         stt_reminder = self._get_stt_tts_reminder(message_intent)
         if stt_reminder:
             context_components.append(stt_reminder)
@@ -103,6 +137,47 @@ User: {user_message}
             enriched_message = f"{temporal_context}\n\nUser: {user_message}"
         
         return enriched_message
+    
+    def _detect_and_instruct_language(self, user_message: str, history: List[Dict[str, Any]]) -> str:
+        """Detect user's language and provide instruction to respond in that language."""
+        import re
+        
+        # Check for Bengali/Bangla characters
+        bn_regex = re.compile(r'[\u0980-\u09FF]')
+        has_bangla = bool(bn_regex.search(user_message))
+        
+        # Check recent history for language preference
+        recent_language = None
+        for item in reversed(history[-5:]):  # Check last 5 messages
+            if item.get("role") == "user":
+                parts = item.get("parts", [])
+                for part in parts:
+                    text = part if isinstance(part, str) else part.get("text", "")
+                    if text and bn_regex.search(text):
+                        recent_language = "bangla"
+                        break
+                    elif text and text.strip():
+                        # Check if it's English (has letters but no Bangla)
+                        if re.search(r'[a-zA-Z]', text) and not bn_regex.search(text):
+                            recent_language = "english"
+            if recent_language:
+                break
+        
+        # Determine current language
+        if has_bangla:
+            current_language = "bangla"
+        elif re.search(r'[a-zA-Z]', user_message):
+            current_language = "english"
+        else:
+            current_language = recent_language or "english"
+        
+        # Build instruction
+        if current_language == "bangla":
+            return "CRITICAL LANGUAGE INSTRUCTION: The user is communicating in Bangla (Bengali). You MUST respond in Bangla using proper Bengali script. Do NOT respond in English. Do NOT say you cannot respond in Bangla. You are a Bangladeshi robot and must communicate fluently in Bangla when users use it."
+        elif current_language == "english":
+            return "LANGUAGE INSTRUCTION: The user is communicating in English. Respond in English."
+        else:
+            return None
     
     def _get_stt_tts_reminder(self, intent: Dict[str, Any]) -> str:
         """Returns STT/TTS reminder if user is asking for code or formatted content."""
@@ -146,7 +221,18 @@ User: {user_message}
             intent["type"] = "news_query"
             intent["requires_tool"] = True
             intent["topic"] = "news"
-        elif any(word in message_lower for word in ["who", "person", "teacher", "student", "principal"]):
+        elif any(word in message_lower for word in ["principal", "chairman", "chief patron", "principal's name", "principal name"]):
+            # Role-based queries should use getSchoolInfo, not searchPerson
+            intent["type"] = "role_query"
+            intent["requires_tool"] = True
+            intent["topic"] = "role"
+            intent["preferred_tool"] = "getSchoolInfo"
+        elif any(word in message_lower for word in ["circumstances", "circum", "what's happening", "what do you see", "what's in front", "describe the situation", "tell me about the scene", "what's around", "what can you see", "describe what you see"]):
+            intent["type"] = "vision_query"
+            intent["requires_tool"] = True
+            intent["topic"] = "vision"
+            intent["preferred_tool"] = "describeCircumstances"
+        elif any(word in message_lower for word in ["who", "person", "teacher", "student"]):
             intent["type"] = "person_search"
             intent["requires_tool"] = True
             intent["topic"] = "person"
