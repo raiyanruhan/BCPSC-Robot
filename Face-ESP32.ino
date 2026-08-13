@@ -165,9 +165,7 @@ void setup() {
   // Initial check for ESP8266 connection
   Serial.println("\nChecking ESP8266 connection...");
   checkHandControllerConnection();
-  if (handControllerConnected) {
-    Serial.println("✓ ESP8266 hand controller is reachable via WiFi");
-  } else {
+  if (!handControllerConnected) {
     Serial.println("⚠ ESP8266 hand controller not reachable - will retry in loop()");
     Serial.println("  Make sure ESP8266 is connected to AP: " + String(ap_ssid));
   }
@@ -1215,6 +1213,7 @@ void sendSerialResponse(String status, String message) {
 
 void checkHandControllerConnection() {
   // Check ESP8266 connection via WiFi (MANDATORY)
+  bool wasConnected = handControllerConnected;
   HTTPClient http;
   String url = "http://" + String(handControllerIP) + "/status";
   
@@ -1225,9 +1224,26 @@ void checkHandControllerConnection() {
   int httpCode = http.GET();
   
   if (httpCode == 200) {
+    String payload = http.getString();
     handControllerConnected = true;
+    if (!wasConnected) {
+      Serial.println("✓ ESP8266 hand controller connected (HTTP 200)");
+      Serial.print("  IP: ");
+      Serial.println(handControllerIP);
+      Serial.print("  Response: ");
+      Serial.println(payload);
+    }
   } else {
     handControllerConnected = false;
+    if (wasConnected) {
+      Serial.println("⚠ ESP8266 hand controller disconnected");
+      if (httpCode > 0) {
+        Serial.print("  HTTP code: ");
+        Serial.println(httpCode);
+      } else {
+        Serial.println("  No response from " + String(handControllerIP) + "/status");
+      }
+    }
     // #region agent log
     debugLog("checkHandControllerConnection", "ESP8266 not reachable via WiFi", "H3", "code=" + String(httpCode));
     // #endregion
