@@ -12,7 +12,48 @@ ESP8266WebServer server(80);
 // WiFi connection status
 bool wifiConnected = false;
 unsigned long lastWifiReconnectAttempt = 0;
-const unsigned long WIFI_RECONNECT_INTERVAL = 3000; // Non-blocking reconnect attempt every 3 seconds
+const unsigned long WIFI_RECONNECT_INTERVAL = 3000; // Delay between reconnect attempts
+const int WIFI_CONNECT_MAX_ATTEMPTS = 60;
+const unsigned long WIFI_CONNECT_POLL_MS = 500;
+
+// Same Wi-Fi procedure used at boot (static IP, begin, poll) — reused for reconnection
+bool connectToWiFi() {
+  IPAddress localIP(192, 168, 4, 2);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    return true;
+  }
+
+  Serial.println("Attempting WiFi connection...");
+  Serial.print("Connecting to WiFi AP: ");
+  Serial.println(ssid);
+
+  WiFi.config(localIP, gateway, subnet);
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < WIFI_CONNECT_MAX_ATTEMPTS) {
+    delay(WIFI_CONNECT_POLL_MS);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    Serial.println("\n✓ WiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+    Serial.println("Ready to receive commands from ESP32");
+    return true;
+  }
+
+  wifiConnected = false;
+  Serial.println("\n⚠ WiFi connection failed - will retry later");
+  return false;
+}
 
 // ================= SERVOS =================
 Servo Thumb, Index, Middle, Ring, Little;
@@ -268,36 +309,9 @@ void number5() {
 void setup() {
   Serial.begin(115200);
 
-  // Configure static IP for ESP8266
-  IPAddress localIP(192, 168, 4, 2);
-  IPAddress gateway(192, 168, 4, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  
-  WiFi.config(localIP, gateway, subnet);
-  
-  Serial.print("Connecting to WiFi AP: ");
-  Serial.println(ssid);
   Serial.println("WiFi is MANDATORY - will retry until connected...");
-  
-  // WiFi connection is mandatory - keep trying until connected
-  WiFi.begin(ssid, password);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 60) { // Increased timeout
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    Serial.println("\n✓ WiFi connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.println("Ready to receive commands from ESP32");
-  } else {
-    Serial.println("\n⚠ WiFi connection failed - will retry in loop()");
-    wifiConnected = false;
+
+  if (!connectToWiFi()) {
     lastWifiReconnectAttempt = millis();
     // #region agent log
     Serial.println("{\"timestamp\":" + String(millis()) + ",\"location\":\"setup:289\",\"message\":\"WiFi connection failed - will retry\",\"hypothesisId\":\"H7\",\"data\":\"attempts=60\",\"sessionId\":\"debug-session\"}");
@@ -385,21 +399,18 @@ void loop() {
   unsigned long now = millis();
 
   if (WiFi.status() != WL_CONNECTED) {
-    wifiConnected = false;
+    if (wifiConnected) {
+      wifiConnected = false;
+      Serial.println("⚠ WiFi disconnected - will retry connection");
+      lastWifiReconnectAttempt = now;
+    }
     if (now - lastWifiReconnectAttempt >= WIFI_RECONNECT_INTERVAL) {
       lastWifiReconnectAttempt = now;
-      Serial.println("Attempting WiFi reconnect...");
-      WiFi.disconnect();
-      WiFi.begin(ssid, password);
+      connectToWiFi();
     }
-  } else {
-    if (!wifiConnected) {
-      Serial.println("WiFi connected! IP: " + WiFi.localIP().toString());
-    }
-    wifiConnected = true;
   }
 
-  if (wifiConnected) {
+  if (WiFi.status() == WL_CONNECTED) {
     server.handleClient();
   }
 
